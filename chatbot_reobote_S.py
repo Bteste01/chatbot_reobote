@@ -1,149 +1,147 @@
 import streamlit as st
 import json
-import os
-from datetime import datetime
+import datetime
 import smtplib
-from email.message import EmailMessage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
-# Funções auxiliares
-def carregar_admins():
-    if os.path.exists("admin.json"):
-        with open("admin.json", "r") as f:
-            return json.load(f)
-    return []
+# Dados iniciais
+ADMIN_PRINCIPAL = {"usuario": "admin", "senha": "admin123"}
+ADMIN_COMUM = {"user1": "senha1"}
+ARTISTAS = {
+    "Cantora A": {"preco": 1000},
+    "Cantora B": {"preco": 1500},
+}
 
-def salvar_artistas(artistas):
-    with open("artistas.json", "w") as f:
-        json.dump(artistas, f)
+def enviar_email(destinatario, assunto, corpo, anexo_nome, anexo_dados):
+    remetente = "seuemail@gmail.com"
+    senha = "suasenha"
+    msg = MIMEMultipart()
+    msg['From'] = remetente
+    msg['To'] = destinatario
+    msg['Subject'] = assunto
 
-def carregar_artistas():
-    if os.path.exists("artistas.json"):
-        with open("artistas.json", "r") as f:
-            return json.load(f)
-    return []
-
-def salvar_cliente(dados):
-    nome_arquivo = f"{dados['nome'].replace(' ', '_')}_{datetime.now().isoformat()}.json"
-    with open(nome_arquivo, "w") as f:
-        json.dump(dados, f)
-
-    # Enviar e-mail
-    msg = EmailMessage()
-    msg["Subject"] = f"Novo contrato de {dados['nome']}"
-    msg["From"] = "seuemail@gmail.com"
-    msg["To"] = "gruporeoboteofc@gmail.com"
-    corpo = "\n".join(f"{k}: {v}" for k, v in dados.items())
-    msg.set_content(corpo)
-
-    with open(nome_arquivo, "rb") as f:
-        msg.add_attachment(f.read(), filename=nome_arquivo)
+    msg.attach(MIMEText(corpo, 'plain'))
+    part = MIMEApplication(json.dumps(anexo_dados, indent=2), Name=anexo_nome)
+    part['Content-Disposition'] = f'attachment; filename="{anexo_nome}"'
+    msg.attach(part)
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login("seuemail@gmail.com", "sua_senha")
-            smtp.send_message(msg)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(remetente, senha)
+            server.send_message(msg)
     except Exception as e:
         st.error(f"Erro ao enviar e-mail: {e}")
 
-# Interface de login
-def login():
-    st.title("Setor de Agrupamento - Grupo Reobote Serviços")
-    st.subheader("Login do Administrador")
+def salvar_dados(dados):
+    with open("dados_clientes.json", "a") as f:
+        f.write(json.dumps(dados) + "\n")
+    enviar_email(
+        "gruporeoboteofc@gmail.com",
+        "Novo preenchimento de contrato",
+        json.dumps(dados, indent=2),
+        "dados.json",
+        dados
+    )
 
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-
-    if st.button("Entrar"):
-        admins = carregar_admins()
-        for admin in admins:
-            if admin["usuario"] == usuario and admin["senha"] == senha:
-                st.session_state["logado"] = True
-                st.session_state["tipo"] = admin["tipo"]
-                st.session_state["usuario"] = usuario
-                st.experimental_rerun()
-        st.error("Usuário ou senha inválidos.")
-
-# Interface do painel administrativo
-def painel_administrador():
-    st.sidebar.success(f"Logado como: {st.session_state['usuario']} ({st.session_state['tipo']})")
-    aba = st.sidebar.radio("Menu", ["Cadastro de Artistas", "Visualizar Dados"])
-
-    if aba == "Cadastro de Artistas" and st.session_state["tipo"] == "principal":
-        st.subheader("Cadastrar Novo Artista")
-        nome = st.text_input("Nome do artista")
-        preco = st.number_input("Preço", min_value=0.0, step=0.01)
-        if st.button("Salvar artista"):
-            artistas = carregar_artistas()
-            artistas.append({"nome": nome, "preco": preco})
-            salvar_artistas(artistas)
-            st.success("Artista cadastrado com sucesso!")
-
-        st.subheader("Excluir Artistas")
-        artistas = carregar_artistas()
-        nomes = [a["nome"] for a in artistas]
-        nome_excluir = st.selectbox("Selecionar artista", nomes)
-        if st.button("Excluir artista"):
-            artistas = [a for a in artistas if a["nome"] != nome_excluir]
-            salvar_artistas(artistas)
-            st.success("Artista excluído!")
-
-    elif aba == "Visualizar Dados":
-        st.subheader("Acompanhamento dos contratos")
-        arquivos = [f for f in os.listdir() if f.endswith(".json") and "artistas" not in f and "admin" not in f]
-        for arq in arquivos:
-            with open(arq) as f:
-                dados = json.load(f)
-                with st.expander(arq):
-                    st.json(dados)
-
-# Interface do chatbot (clientes)
 def chatbot():
     st.title("Setor de Agrupamento - Grupo Reobote Serviços")
-    st.subheader("Inicie seu atendimento")
 
-    with st.form("form_chat"):
-        nome = st.text_input("Seu nome")
-        cidade = st.text_input("Cidade")
-        estado = st.text_input("Estado")
-        servico = st.selectbox("Serviço desejado", ["Parceria", "Vínculo de assessoria", "Agendar com artista"])
-        
-        artista_escolhido = None
-        if servico == "Agendar com artista":
-            artistas = carregar_artistas()
-            nomes = [a["nome"] for a in artistas]
-            artista_escolhido = st.selectbox("Escolher artista", nomes)
-            data_evento = st.date_input("Data do evento")
-            hora_inicio = st.time_input("Hora de início")
-            hora_fim = st.time_input("Hora de término")
-        
-        prazo = None
-        if servico in ["Parceria", "Vínculo de assessoria"]:
-            prazo = st.selectbox("Prazo do contrato", ["3 meses", "6 meses", "12 meses"])
+    if 'step' not in st.session_state:
+        st.session_state.step = 0
+        st.session_state.dados = {}
 
+    if st.session_state.step == 0:
+        st.write("Olá! Qual o seu nome?")
+        nome = st.text_input("Digite seu nome")
+        if st.button("Enviar", key="nome_btn") and nome:
+            st.session_state.dados['nome'] = nome
+            st.session_state.step = 1
+            st.experimental_rerun()
+
+    elif st.session_state.step == 1:
+        cidade = st.text_input("Qual a sua cidade?")
+        if st.button("Enviar", key="cidade_btn") and cidade:
+            st.session_state.dados['cidade'] = cidade
+            st.session_state.step = 2
+            st.experimental_rerun()
+
+    elif st.session_state.step == 2:
+        estado = st.text_input("Qual o seu estado?")
+        if st.button("Enviar", key="estado_btn") and estado:
+            st.session_state.dados['estado'] = estado
+            st.session_state.step = 3
+            st.experimental_rerun()
+
+    elif st.session_state.step == 3:
+        servico = st.radio("Qual serviço deseja?", ["Parceria", "Vínculo de assessoria", "Agendar com artista"])
+        if st.button("Confirmar serviço"):
+            st.session_state.dados['tipo_servico'] = servico
+            if servico == "Agendar com artista":
+                st.session_state.step = 4.1
+            else:
+                st.session_state.step = 5
+            st.experimental_rerun()
+
+    elif st.session_state.step == 4.1:
+        artista = st.selectbox("Escolha o artista:", list(ARTISTAS.keys()))
+        data_evento = st.date_input("Data do evento")
+        hora_inicio = st.time_input("Hora de início")
+        hora_termo = st.time_input("Hora de término")
+        if st.button("Confirmar artista e horário"):
+            st.session_state.dados.update({
+                "artista": artista,
+                "preco": ARTISTAS[artista]['preco'],
+                "data_evento": str(data_evento),
+                "hora_inicio": str(hora_inicio),
+                "hora_termo": str(hora_termo)
+            })
+            st.session_state.step = 5
+            st.experimental_rerun()
+
+    elif st.session_state.step == 5:
         email = st.text_input("E-mail para contato")
-        telefone = st.text_input("WhatsApp para contato")
+        telefone = st.text_input("Telefone para contato")
+        if st.button("Finalizar"):
+            st.session_state.dados.update({"email": email, "telefone": telefone})
+            salvar_dados(st.session_state.dados)
+            st.success("Dados enviados com sucesso!")
+            st.session_state.step = 0
+            st.session_state.dados = {}
 
-        enviado = st.form_submit_button("Enviar")
-        if enviado:
-            dados = {
-                "nome": nome, "cidade": cidade, "estado": estado,
-                "servico": servico, "prazo": prazo,
-                "artista": artista_escolhido,
-                "data_evento": str(data_evento) if servico == "Agendar com artista" else None,
-                "hora_inicio": str(hora_inicio) if servico == "Agendar com artista" else None,
-                "hora_fim": str(hora_fim) if servico == "Agendar com artista" else None,
-                "email": email, "telefone": telefone
-            }
-            salvar_cliente(dados)
-            st.success("Seus dados foram enviados com sucesso!")
-
-# Execução
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
-
-if st.session_state["logado"]:
-    painel_administrador()
+# Área administrativa
+st.sidebar.title("Administração")
+if 'admin_tipo' not in st.session_state:
+    login_user = st.sidebar.text_input("Usuário")
+    login_pass = st.sidebar.text_input("Senha", type="password")
+    if st.sidebar.button("Entrar"):
+        if login_user == ADMIN_PRINCIPAL['usuario'] and login_pass == ADMIN_PRINCIPAL['senha']:
+            st.session_state.admin_tipo = "principal"
+        elif login_user in ADMIN_COMUM and ADMIN_COMUM[login_user] == login_pass:
+            st.session_state.admin_tipo = "comum"
+        else:
+            st.sidebar.error("Credenciais inválidas")
 else:
+    st.sidebar.success(f"Logado como: {st.session_state.admin_tipo}")
+    if st.sidebar.button("Sair"):
+        del st.session_state.admin_tipo
+        st.experimental_rerun()
+
+    if st.session_state.admin_tipo == "principal":
+        st.subheader("Cadastro de novos artistas")
+        novo_artista = st.text_input("Nome do artista")
+        preco_artista = st.number_input("Preço", min_value=0)
+        if st.button("Salvar artista"):
+            ARTISTAS[novo_artista] = {"preco": preco_artista}
+            st.success("Artista adicionado com sucesso")
+
+        excluir_artista = st.selectbox("Excluir artista", ["Nenhum"] + list(ARTISTAS.keys()))
+        if excluir_artista != "Nenhum" and st.button("Excluir"):
+            del ARTISTAS[excluir_artista]
+            st.success(f"Artista {excluir_artista} excluído.")
+
+# Executa o chatbot se não for admin
+if 'admin_tipo' not in st.session_state:
     chatbot()
-    st.divider()
-    login()
+    
