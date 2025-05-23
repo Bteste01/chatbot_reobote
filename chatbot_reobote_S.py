@@ -8,7 +8,6 @@ def salvar_dados(dados):
         f.write("\n")
 
 st.set_page_config(page_title="Contratos e Ações", layout="centered")
-st.image("logomarca.png", width=150)  # certifique-se de que o arquivo 'logomarca.png' esteja na mesma pasta
 st.title("Grupo Reobote Serviços")
 st.subheader("Sistema: Contratos e Ações")
 
