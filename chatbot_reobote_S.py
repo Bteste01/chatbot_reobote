@@ -1,187 +1,167 @@
+# chatbot_reobote_servicos.py
 import streamlit as st
 import json
-import hashlib
 import smtplib
-from email.message import EmailMessage
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+import os
 from datetime import datetime
 
-# ---- ARQUIVOS JSON ----
-ARQ_ADMINS = "admins.json"
-ARQ_ARTISTAS = "artistas.json"
-ARQ_CONTRATOS = "contratos.json"
+st.set_page_config(page_title="Setor de Agrupamento - Grupo Reobote Serviços")
 
-# ---- USUÁRIOS FIXOS INICIAIS (apenas para rodar primeira vez) ----
-# Administrador principal fixo: usuário: admin / senha: admin123
-# Administradores comuns são cadastrados via painel admin principal
+st.title("Setor de Agrupamento - Grupo Reobote Serviços")
 
-# --- Funções para JSON ---
-def carregar_json(nome_arquivo):
+# Sessão inicial
+if 'step' not in st.session_state:
+    st.session_state.update({
+        'step': 0,
+        'nome': '',
+        'cidade': '',
+        'estado': '',
+        'servico': '',
+        'dados': {},
+        'admin': False,
+        'tipo_admin': ''
+    })
+
+# Função para salvar e enviar email
+def salvar_e_enviar_email(dados):
+    filename = f"dados_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(filename, "w") as f:
+        json.dump(dados, f, indent=2)
+
+    msg = MIMEMultipart()
+    msg['From'] = 'seuemail@gmail.com'  # configure aqui
+    msg['To'] = 'gruporeoboteofc@gmail.com'
+    msg['Subject'] = f"Novo Formulário - {dados.get('nome')}"
+
+    body = "".join([f"{k}: {v}\n" for k, v in dados.items()])
+    msg.attach(MIMEText(body, 'plain'))
+
+    with open(filename, "rb") as f:
+        part = MIMEApplication(f.read(), Name=filename)
+        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+        msg.attach(part)
+
     try:
-        with open(nome_arquivo, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def salvar_json(nome_arquivo, dados):
-    with open(nome_arquivo, "w", encoding="utf-8") as f:
-        json.dump(dados, f, indent=4, ensure_ascii=False)
-
-# --- Função hash para senha ---
-def hash_senha(senha):
-    return hashlib.sha256(senha.encode()).hexdigest()
-
-# --- Inicializa arquivos JSON se não existirem ---
-def inicializar():
-    admins = carregar_json(ARQ_ADMINS)
-    if not admins:
-        # cria admin principal fixo
-        admins["admin"] = {"senha": hash_senha("admin123"), "tipo": "principal"}
-        salvar_json(ARQ_ADMINS, admins)
-    if not carregar_json(ARQ_ARTISTAS):
-        salvar_json(ARQ_ARTISTAS, {})
-    if not carregar_json(ARQ_CONTRATOS):
-        salvar_json(ARQ_CONTRATOS, {})
-
-# --- Função para enviar email ---
-def enviar_email(para_email, assunto, corpo, anexo_json):
-    try:
-        msg = EmailMessage()
-        msg['Subject'] = assunto
-        msg['From'] = "seuemail@gmail.com"   # Troque pelo seu e-mail
-        msg['To'] = para_email
-        msg.set_content(corpo)
-
-        # Anexo JSON
-        msg.add_attachment(json.dumps(anexo_json, ensure_ascii=False, indent=4).encode("utf-8"), 
-                           maintype='application', subtype='json', filename='dados_contrato.json')
-
-        # Configurar servidor SMTP - exemplo Gmail
-        smtp_server = "smtp.gmail.com"
-        smtp_port = 587
-        smtp_user = "seuemail@gmail.com"     # Troque pelo seu e-mail
-        smtp_pass = "suasenhaaplicativo"     # Troque pela senha app (não use sua senha normal)
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
-        server.login(smtp_user, smtp_pass)
+        server.login('seuemail@gmail.com', 'suasenha')  # configure aqui
         server.send_message(msg)
         server.quit()
+        os.remove(filename)
         return True
     except Exception as e:
-        print("Erro ao enviar email:", e)
+        st.error("Erro ao enviar e-mail")
         return False
 
-# --- Login ---
-def login():
-    st.title("Login - Setor de Agrupamento - Grupo Reobote Serviços")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
-        admins = carregar_json(ARQ_ADMINS)
-        if usuario in admins and admins[usuario]["senha"] == hash_senha(senha):
-            st.success(f"Bem vindo(a), {usuario}!")
-            st.session_state['logado'] = True
-            st.session_state['usuario'] = usuario
-            st.session_state['tipo'] = admins[usuario]["tipo"]
-            st.experimental_rerun()
-        else:
-            st.error("Usuário ou senha incorretos.")
+# Etapas do chatbot
+if st.session_state.step == 0:
+    st.write("Olá! Qual seu nome?")
+    nome = st.text_input("Nome")
+    if st.button("Enviar") and nome:
+        st.session_state.nome = nome
+        st.session_state.step = 1
 
-# --- Painel Admin Principal ---
-def painel_admin_principal():
-    st.title("Painel Administrador Principal - Grupo Reobote Serviços")
+elif st.session_state.step == 1:
+    cidade = st.text_input("Cidade")
+    if st.button("Enviar cidade") and cidade:
+        st.session_state.cidade = cidade
+        st.session_state.step = 2
 
-    menu = st.sidebar.selectbox("Menu", ["Administradores", "Artistas", "Visualizar Contratos", "Logout"])
+elif st.session_state.step == 2:
+    estado = st.text_input("Estado")
+    if st.button("Enviar estado") and estado:
+        st.session_state.estado = estado
+        st.session_state.step = 3
 
-    if menu == "Administradores":
-        st.header("Gerenciar Administradores Comuns")
-        admins = carregar_json(ARQ_ADMINS)
+elif st.session_state.step == 3:
+    st.write("Qual serviço deseja?")
+    servico = st.radio("Serviço", ["Parceria", "Vínculo de assessoria", "Agendar com artista"])
+    if st.button("Escolher serviço"):
+        st.session_state.servico = servico
+        st.session_state.step = 4
 
-        st.subheader("Adicionar Administrador Comum")
-        novo_admin = st.text_input("Nome do usuário")
-        nova_senha = st.text_input("Senha", type="password")
-        if st.button("Adicionar Administrador"):
-            if novo_admin and nova_senha:
-                if novo_admin in admins:
-                    st.error("Usuário já existe.")
-                else:
-                    admins[novo_admin] = {"senha": hash_senha(nova_senha), "tipo": "comum"}
-                    salvar_json(ARQ_ADMINS, admins)
-                    st.success(f"Administrador {novo_admin} adicionado.")
-            else:
-                st.error("Preencha todos os campos.")
+elif st.session_state.step == 4:
+    dados = {
+        "nome": st.session_state.nome,
+        "cidade": st.session_state.cidade,
+        "estado": st.session_state.estado,
+        "servico": st.session_state.servico
+    }
 
-        st.subheader("Administradores cadastrados")
-        for u, dados in admins.items():
-            if dados["tipo"] == "comum":
-                col1, col2 = st.columns([3,1])
-                col1.write(f"Usuário: {u}")
-                if col2.button(f"Deletar {u}"):
-                    del admins[u]
-                    salvar_json(ARQ_ADMINS, admins)
-                    st.experimental_rerun()
+    if st.session_state.servico == "Agendar com artista":
+        artista = st.text_input("Nome do artista")
+        preco = st.text_input("Preço combinado")
+        data_evento = st.date_input("Data do evento")
+        hora_inicio = st.time_input("Hora de início")
+        hora_termo = st.time_input("Hora de término")
+        telefone = st.text_input("Telefone")
+        email = st.text_input("Email")
+        if st.button("Salvar e Enviar"):
+            dados.update({
+                "artista": artista,
+                "preco": preco,
+                "data_evento": str(data_evento),
+                "hora_inicio": str(hora_inicio),
+                "hora_termo": str(hora_termo),
+                "telefone": telefone,
+                "email": email
+            })
+            st.session_state.dados = dados
+            if salvar_e_enviar_email(dados):
+                st.success("Dados enviados com sucesso!")
+                st.session_state.step = 0
+    else:
+        prazo = st.selectbox("Prazo do contrato", ["3 meses", "6 meses", "12 meses"])
+        forma_pagamento = st.selectbox("Forma de pagamento", ["Pix", "Cartão", "Boleto"])
+        telefone = st.text_input("Telefone")
+        email = st.text_input("Email")
+        if st.button("Salvar e Enviar"):
+            dados.update({
+                "prazo": prazo,
+                "forma_pagamento": forma_pagamento,
+                "telefone": telefone,
+                "email": email
+            })
+            st.session_state.dados = dados
+            if salvar_e_enviar_email(dados):
+                st.success("Dados enviados com sucesso!")
+                st.session_state.step = 0
 
-    elif menu == "Artistas":
-        st.header("Gerenciar Artistas e Serviços")
-        artistas = carregar_json(ARQ_ARTISTAS)
+# Área administrativa
+st.sidebar.title("Área Administrativa")
+admin_user = st.sidebar.text_input("Usuário")
+admin_pass = st.sidebar.text_input("Senha", type="password")
 
-        st.subheader("Adicionar/Editar Artista")
-        nome_artista = st.text_input("Nome do Artista")
-        preco_artista = st.number_input("Preço do Serviço (R$)", min_value=0.0, format="%.2f")
-        if st.button("Salvar Artista"):
-            if nome_artista.strip():
-                artistas[nome_artista] = {"preco": preco_artista}
-                salvar_json(ARQ_ARTISTAS, artistas)
-                st.success(f"Artista {nome_artista} salvo.")
-            else:
-                st.error("Informe o nome do artista.")
+if st.sidebar.button("Entrar"):
+    if admin_user == "admin" and admin_pass == "1234":
+        st.session_state.admin = True
+        st.session_state.tipo_admin = "principal"
+    elif admin_user == "comum" and admin_pass == "1234":
+        st.session_state.admin = True
+        st.session_state.tipo_admin = "comum"
+    else:
+        st.sidebar.error("Acesso negado")
 
-        st.subheader("Artistas cadastrados")
-        for nome, dados in artistas.items():
-            col1, col2 = st.columns([3,1])
-            col1.write(f"{nome} - R$ {dados['preco']:.2f}")
-            if col2.button(f"Deletar {nome}"):
-                del artistas[nome]
-                salvar_json(ARQ_ARTISTAS, artistas)
+if st.session_state.admin:
+    st.sidebar.success(f"Logado como {st.session_state.tipo_admin}")
+    st.subheader("Gerenciar Artistas")
+
+    if 'artistas' not in st.session_state:
+        st.session_state.artistas = []
+
+    novo_artista = st.text_input("Nome do artista para cadastrar")
+    preco_artista = st.text_input("Preço do artista")
+    if st.button("Cadastrar Artista") and novo_artista and preco_artista:
+        st.session_state.artistas.append({"nome": novo_artista, "preco": preco_artista})
+        st.success("Artista cadastrado")
+
+    if st.session_state.artistas:
+        for i, artista in enumerate(st.session_state.artistas):
+            st.write(f"{artista['nome']} - R$ {artista['preco']}")
+            if st.button(f"Excluir {artista['nome']}"):
+                st.session_state.artistas.pop(i)
                 st.experimental_rerun()
-
-    elif menu == "Visualizar Contratos":
-        st.header("Contratos Recebidos")
-        contratos = carregar_json(ARQ_CONTRATOS)
-        if contratos:
-            for cid, contrato in contratos.items():
-                st.write(f"ID: {cid}")
-                st.json(contrato)
-                st.markdown("---")
-        else:
-            st.info("Nenhum contrato enviado ainda.")
-
-    elif menu == "Logout":
-        st.session_state.clear()
-        st.experimental_rerun()
-
-# --- Painel Administrador Comum ---
-def painel_admin_comum():
-    st.title("Painel Administrador Comum - Grupo Reobote Serviços")
-    menu = st.sidebar.selectbox("Menu", ["Visualizar e Editar Contratos", "Logout"])
-
-    if menu == "Visualizar e Editar Contratos":
-        st.header("Contratos Recebidos")
-        contratos = carregar_json(ARQ_CONTRATOS)
-        artistas = carregar_json(ARQ_ARTISTAS)
-        if contratos:
-            id_contrato = st.selectbox("Selecione o ID do contrato para editar", list(contratos.keys()))
-            contrato = contratos[id_contrato]
-            st.write("Dados do contrato:")
-            contrato['nome'] = st.text_input("Nome", contrato.get('nome', ''))
-            contrato['cpf'] = st.text_input("CPF", contrato.get('cpf', ''))
-            contrato['documento'] = st.text_input("Documento de Identificação", contrato.get('documento', ''))
-            contrato['rua'] = st.text_input("Rua", contrato.get('rua', ''))
-            contrato['bairro'] = st.text_input("Bairro", contrato.get('bairro', ''))
-            contrato['cidade'] = st.text_input("Cidade", contrato.get('cidade', ''))
-            contrato['numero'] = st.text_input("Número", contrato.get('numero', ''))
-            contrato['email'] = st.text_input("E-mail", contrato.get('email', ''))
-            contrato['telefone'] = st.text_input("Telefone", contrato.get('telefone', ''))
-            contrato['tipo_contrato'] = st.selectbox("Tipo de contrato", ["Parceria", "Vínculo de assessoria", "Agendamento de artistas"], index=["Parceria", "Vínculo de assessoria", "Agendamento de artistas"].index(contrato.get('tipo_contrato','Parceria')))
-            
-            if st.button("Salvar
+    
