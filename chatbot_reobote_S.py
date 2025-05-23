@@ -144,4 +144,3 @@ else:
 # Executa o chatbot se não for admin
 if 'admin_tipo' not in st.session_state:
     chatbot()
-    
