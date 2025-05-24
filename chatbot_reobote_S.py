@@ -1,94 +1,194 @@
 import streamlit as st
+from datetime import datetime, timedelta
+from PIL import Image
+import io
 import json
-import smtplib
-from email.message import EmailMessage
-from datetime import datetime
 
-st.set_page_config(page_title="Setor de Agrupamento - Grupo Reobote Serviços")
+# Estado inicial
+if 'agendamentos' not in st.session_state:
+    st.session_state.agendamentos = []
+if 'admin_principal' not in st.session_state:
+    st.session_state.admin_principal = {'email': 'admin@admin.com', 'senha': 'admin'}
+if 'admins' not in st.session_state:
+    st.session_state.admins = []
+if 'whatsapp' not in st.session_state:
+    st.session_state.whatsapp = ''
+if 'empresa' not in st.session_state:
+    st.session_state.empresa = {'nome': '', 'descricao': '', 'logotipo': None}
+if 'artistas_disponiveis' not in st.session_state:
+    st.session_state.artistas_disponiveis = [
+        {
+            "nome": "Bruno Cruz",
+            "servicos": [{"nome": "Show musical", "preco": 2500.00}],
+            "foto": None,
+            "descricao": "Cantor e compositor com repertório variado.",
+            "categoria": "Cantor"
+        },
+        {
+            "nome": "Skreps",
+            "servicos": [{"nome": "Palestra motivacional", "preco": 1800.00}],
+            "foto": None,
+            "descricao": "Palestrante e influenciador com foco em motivação pessoal.",
+            "categoria": "Palestrante"
+        },
+        {
+            "nome": "Lú Almeida",
+            "servicos": [{"nome": "Ministração gospel", "preco": 2000.00}],
+            "foto": None,
+            "descricao": "Cantora gospel com experiência em eventos religiosos.",
+            "categoria": "Pregadora"
+        }
+    ]
 
-st.title("Setor de Agrupamento - Grupo Reobote Serviços")
+st.title("AGRUPAMENTO REOBOTE SERVIÇOS")
 
-if 'step' not in st.session_state:
-    st.session_state.step = 1
-    st.session_state.data = {}
+if st.session_state.empresa['nome']:
+    st.image(st.session_state.empresa['logotipo'], width=100)
+    st.subheader(st.session_state.empresa['nome'])
+    st.caption(st.session_state.empresa['descricao'])
 
-# Função para enviar e-mail com os dados
-def enviar_email(dados):
-    msg = EmailMessage()
-    msg['Subject'] = 'Novo preenchimento - Grupo Reobote Serviços'
-    msg['From'] = 'seuemail@gmail.com'
-    msg['To'] = 'gruporeoboteofc@gmail.com'
+st.header("Escolha o serviço desejado")
+opcao_servico = st.selectbox("Serviço", ["Agendar com Artista", "Parcerias", "Vínculo de Assessoria", "Ações no Contrato"])
 
-    corpo = json.dumps(dados, indent=2, ensure_ascii=False)
-    msg.set_content(f"Preenchimento de cliente:\n\n{corpo}")
+if opcao_servico == "Agendar com Artista":
+    artista_nomes = [a['nome'] for a in st.session_state.artistas_disponiveis]
+    artista_selecionado = st.selectbox("Escolha um artista", artista_nomes)
 
-    # Adiciona anexo JSON
-    json_bytes = json.dumps(dados, ensure_ascii=False).encode('utf-8')
-    msg.add_attachment(json_bytes, maintype='application', subtype='json', filename='dados_cliente.json')
+    artista_info = next(a for a in st.session_state.artistas_disponiveis if a['nome'] == artista_selecionado)
+    if artista_info['foto']:
+        st.image(artista_info['foto'], width=150)
+    st.write("**Descrição:**", artista_info['descricao'])
+    st.write("**Categoria:**", artista_info['categoria'])
 
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login('seuemail@gmail.com', 'suasenha')
-            smtp.send_message(msg)
-        return True
-    except Exception as e:
-        st.error(f"Erro ao enviar e-mail: {e}")
-        return False
+    servico_opcoes = [f"{s['nome']} - R${s['preco']:.2f}" for s in artista_info['servicos']]
+    servico_escolhido = st.selectbox("Escolha o serviço", servico_opcoes)
 
-# Etapas do chatbot
-if st.session_state.step == 1:
-    nome = st.text_input("Olá! Qual o seu nome?")
-    if st.button("Enviar nome") and nome:
-        st.session_state.data['nome'] = nome
-        st.session_state.step = 2
-
-elif st.session_state.step == 2:
-    cidade = st.text_input("Qual a sua cidade?")
-    estado = st.text_input("E seu estado?")
-    if st.button("Enviar localização") and cidade and estado:
-        st.session_state.data['cidade'] = cidade
-        st.session_state.data['estado'] = estado
-        st.session_state.step = 3
-
-elif st.session_state.step == 3:
-    servico = st.radio("Qual serviço você deseja?", ("Parceria", "Vínculo de assessoria", "Agendar com artista"))
-    if st.button("Escolher serviço"):
-        st.session_state.data['servico'] = servico
-        if servico == "Agendar com artista":
-            st.session_state.step = 4.1
-        else:
-            st.session_state.step = 5
-
-elif st.session_state.step == 4.1:
+    nome_cliente = st.text_input("Seu nome")
+    email_cliente = st.text_input("Email")
+    telefone_cliente = st.text_input("Telefone")
+    cidade_cliente = st.text_input("Cidade")
     data_evento = st.date_input("Data do evento")
     hora_inicio = st.time_input("Hora de início")
     hora_fim = st.time_input("Hora de término")
-    if st.button("Confirmar horário"):
-        st.session_state.data['data_evento'] = str(data_evento)
-        st.session_state.data['hora_inicio'] = str(hora_inicio)
-        st.session_state.data['hora_fim'] = str(hora_fim)
-        st.session_state.step = 5
 
-elif st.session_state.step == 5:
-    telefone = st.text_input("Informe seu telefone para contato")
-    email = st.text_input("E seu e-mail?")
-    if st.button("Finalizar e enviar"):
-        st.session_state.data['telefone'] = telefone
-        st.session_state.data['email'] = email
-        enviado = enviar_email(st.session_state.data)
-        if enviado:
-            st.success("Dados enviados com sucesso! Em breve entraremos em contato.")
-            st.session_state.step = 6
+    if st.button("Confirmar Agendamento"):
+        inicio = datetime.combine(data_evento, hora_inicio)
+        fim = datetime.combine(data_evento, hora_fim)
+        conflito = any(
+            ag['artista'] == artista_selecionado and
+            not (fim <= ag['inicio'] or inicio >= ag['fim'])
+            for ag in st.session_state.agendamentos
+        )
+        if conflito:
+            st.error("Esse horário já está ocupado para este artista.")
+        else:
+            st.session_state.agendamentos.append({
+                'artista': artista_selecionado,
+                'servico': servico_escolhido,
+                'cliente': nome_cliente,
+                'email': email_cliente,
+                'telefone': telefone_cliente,
+                'cidade': cidade_cliente,
+                'inicio': inicio,
+                'fim': fim
+            })
+            st.success("Agendamento realizado com sucesso!")
 
-# Tela final opcional de login do administrador
-elif st.session_state.step == 6:
-    if st.checkbox("Área administrativa (somente administradores)"):
-        usuario = st.text_input("Usuário", key="admin_user")
-        senha = st.text_input("Senha", type="password", key="admin_pass")
-        if st.button("Entrar como administrador"):
-            if usuario == "admin" and senha == "1234":
-                st.success("Login realizado com sucesso! (em desenvolvimento)")
-                st.info("Aqui será exibido o painel do administrador para cadastrar artistas, preços e visualizar dados.")
-            else:
-                st.error("Usuário ou senha incorretos.")
-    
+elif opcao_servico == "Parcerias":
+    st.text_input("Nome da Empresa Parceira")
+    st.text_input("Email para Contato")
+    st.text_area("Mensagem ou Proposta")
+    st.button("Enviar Proposta de Parceria")
+
+elif opcao_servico == "Vínculo de Assessoria":
+    st.text_input("Nome Completo")
+    st.text_input("Email")
+    st.text_area("Conte-nos sobre você e seu trabalho artístico")
+    st.button("Enviar Solicitação de Vínculo")
+
+elif opcao_servico == "Ações no Contrato":
+    acao = st.selectbox("Escolha uma ação", ["Rescisão do Contrato", "Mudanças no Contrato", "Meus Contratos", "Cancelar Contrato"])
+
+    if acao == "Rescisão do Contrato":
+        tipo_contrato = st.selectbox("Tipo de Contrato", ["Parceria", "Vínculo de Assessoria"])
+
+    elif acao == "Cancelar Contrato":
+        st.subheader("Cancelar um Contrato")
+        codigo_contrato = st.text_input("Código do Contrato")
+        nome_cliente = st.text_input("Seu Nome")
+        email_cliente = st.text_input("Seu Email")
+        motivo_cancelamento = st.text_area("Motivo do Cancelamento")
+        st.button("Enviar Pedido de Cancelamento")
+
+# Botão de WhatsApp
+if st.session_state.whatsapp:
+    whatsapp_link = f"https://wa.me/{st.session_state.whatsapp.replace('+', '').replace(' ', '')}"
+    st.markdown(f"[Fale conosco no WhatsApp]({whatsapp_link})", unsafe_allow_html=True)
+
+# Botão de login do admin
+st.markdown("---")
+with st.expander("Área do Administrador"):
+    login_email = st.text_input("Email do administrador")
+    login_senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        if login_email == st.session_state.admin_principal['email'] and login_senha == st.session_state.admin_principal['senha']:
+            st.session_state.admin_logado = 'principal'
+            st.success("Login como administrador principal!")
+        elif any(a['email'] == login_email and a['senha'] == login_senha for a in st.session_state.admins):
+            st.session_state.admin_logado = login_email
+            st.success("Login como administrador!")
+        else:
+            st.error("Credenciais inválidas.")
+
+# Interface do administrador principal
+if st.session_state.get('admin_logado') == 'principal':
+    st.header("Painel do Administrador Principal")
+    st.subheader("Cadastrar Novo Administrador")
+    email_novo = st.text_input("Email do novo administrador")
+    senha_nova = st.text_input("Senha", type="password")
+    if st.button("Cadastrar Novo Administrador"):
+        if email_novo in [a['email'] for a in st.session_state.admins]:
+            st.warning("Administrador já cadastrado")
+        else:
+            st.session_state.admins.append({"email": email_novo, "senha": senha_nova})
+            st.success("Novo administrador cadastrado com sucesso")
+
+    st.subheader("Configurações da Empresa")
+    nome_empresa = st.text_input("Nome da empresa", value=st.session_state.empresa['nome'])
+    descricao_empresa = st.text_area("Descrição", value=st.session_state.empresa['descricao'])
+    logotipo = st.file_uploader("Logotipo", type=["png", "jpg"])
+    whatsapp_numero = st.text_input("Número de WhatsApp para contato", value=st.session_state.whatsapp)
+    if st.button("Salvar Dados da Empresa"):
+        st.session_state.empresa['nome'] = nome_empresa
+        st.session_state.empresa['descricao'] = descricao_empresa
+        if logotipo:
+            st.session_state.empresa['logotipo'] = Image.open(logotipo)
+        st.session_state.whatsapp = whatsapp_numero
+        st.success("Dados da empresa atualizados com sucesso")
+
+    st.subheader("Lista de Agendamentos")
+    for ag in st.session_state.agendamentos:
+        st.write(f"{ag['cliente']} agendou {ag['servico']} com {ag['artista']} em {ag['inicio']} até {ag['fim']} - {ag['cidade']} - {ag['telefone']}")
+
+    st.subheader("Backup e Restauração")
+    if st.button("Fazer backup dos dados"):
+        dados_backup = {
+            "agendamentos": st.session_state.agendamentos,
+            "artistas_disponiveis": st.session_state.artistas_disponiveis,
+            "admins": st.session_state.admins,
+            "empresa": st.session_state.empresa,
+            "whatsapp": st.session_state.whatsapp
+        }
+        conteudo_json = json.dumps(dados_backup, default=str, indent=2)
+        st.download_button("Clique para baixar o backup", conteudo_json, file_name="backup_agendamentos.json")
+
+    arquivo_backup = st.file_uploader("Carregar backup (.json)", type=["json"])
+    if arquivo_backup:
+        dados = json.load(arquivo_backup)
+        st.session_state.agendamentos = dados.get("agendamentos", [])
+        st.session_state.artistas_disponiveis = dados.get("artistas_disponiveis", [])
+        st.session_state.admins = dados.get("admins", [])
+        st.session_state.empresa = dados.get("empresa", {})
+        st.session_state.whatsapp = dados.get("whatsapp", "")
+        st.success("Backup carregado com sucesso!")
+            
